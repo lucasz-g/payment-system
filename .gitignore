@@ -1,0 +1,7 @@
+# Configuracoes locais do editor. Cada servico versiona o proprio .vscode
+# quando faz sentido (ex.: order-service/.vscode); na raiz e so ruido de maquina.
+.vscode/
+
+# Sistema operacional
+.DS_Store
+Thumbs.db

@@ -51,6 +51,17 @@
 			<artifactId>spring-boot-starter-webmvc</artifactId>
 		</dependency>
 
+		<!-- No Spring Boot 4 a autoconfiguracao de cada tecnologia vem em seu
+		     proprio modulo; este traz o flyway-core junto. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-flyway</artifactId>
+		</dependency>
+		<!-- Desde o Flyway 10 o suporte a cada banco vem em artefato separado. -->
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-database-postgresql</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>

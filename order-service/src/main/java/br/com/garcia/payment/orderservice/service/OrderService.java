@@ -8,6 +8,7 @@ import br.com.garcia.payment.orderservice.dto.OrderRequest;
 import br.com.garcia.payment.orderservice.dto.OrderResponse;
 import br.com.garcia.payment.orderservice.model.OrderModel;
 import br.com.garcia.payment.orderservice.repository.OrderRepository;
+import jakarta.transaction.Transactional;
 
 @Service
 public class OrderService {
@@ -18,13 +19,14 @@ public class OrderService {
         this.orderRepository = orderRepository;
     }
 
-    //Methods
+    // CRUD operations
     public List<OrderResponse> getOrders() {
         return orderRepository.findAll().stream().map(
             OrderResponse::new
         ).toList(); 
     }
 
+    @Transactional
     public OrderResponse createOrder(OrderModel orderModel){
         orderRepository.save(orderModel);
         OrderResponse orderResponse = new OrderResponse(orderModel);
