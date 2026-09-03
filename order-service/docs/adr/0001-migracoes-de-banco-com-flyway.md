@@ -1,6 +1,6 @@
 # ADR 0001 — Migrações de banco com Flyway (e não `ddl-auto: update`)
 
-- **Status:** Aceita — migração `V1` criada; ajustes de `pom.xml` e `application.yml` **pendentes** (ver "Como aplicar")
+- **Status:** Aceita e **aplicada** em 2026-09-02 (ver "Como foi aplicado")
 - **Data:** 2026-09-02
 - **Contexto:** `order-service`
 - **Relacionadas:** [0002 — `@ValidRecipient`](0002-validacao-customizada-validrecipient.md), [0003 — DTOs](0003-dtos-request-e-response.md)
@@ -43,14 +43,14 @@ Convenção do nome: `V<versão>__<descrição>.sql` — **dois underscores**. O
 
 Corolário prático: **toda mudança em `OrderModel` exige uma migração nova no mesmo commit.** Adicionou um campo? Vem `V2__add_campo.sql` junto. Se esquecer, `ddl-auto: validate` derruba o startup — que é exatamente o comportamento desejado: falha barulhenta e cedo.
 
-## Como aplicar (pendente)
+## Como foi aplicado
 
 ### 1. Dependências (`order-service/pom.xml`)
 
 ```xml
 <dependency>
-    <groupId>org.flywaydb</groupId>
-    <artifactId>flyway-core</artifactId>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-flyway</artifactId>
 </dependency>
 <dependency>
     <groupId>org.flywaydb</groupId>
@@ -58,18 +58,33 @@ Corolário prático: **toda mudança em `OrderModel` exige uma migração nova n
 </dependency>
 ```
 
-> Desde o Flyway 10 o suporte a cada banco vive em um módulo separado — só o `flyway-core` **não** basta para Postgres. As versões vêm do `spring-boot-starter-parent`; não fixe versão à mão.
+> **Pegadinha do Spring Boot 4 — custou uma sessão de debug.** O Boot 4 quebrou o
+> `spring-boot-autoconfigure` monolítico em um módulo por tecnologia (é a mesma
+> reorganização que renomeou `spring-boot-starter-web` → `spring-boot-starter-webmvc`).
+> A autoconfiguração do Flyway mora agora em **`org.springframework.boot:spring-boot-flyway`**.
+>
+> Declarar apenas `org.flywaydb:flyway-core` — como manda todo tutorial escrito para
+> o Boot 3 — coloca o Flyway no classpath mas **não liga nada**: a aplicação sobe sem
+> uma única linha de log do Flyway, nenhuma migração roda, e o sintoma que você vê é
+> o `ddl-auto: validate` reclamando de `missing table [orders]`. Fácil de diagnosticar
+> errado, porque o `dependency:tree` mostra o `flyway-core` lá, certinho.
+>
+> O `spring-boot-flyway` traz o `flyway-core` como transitiva; o
+> `flyway-database-postgresql` continua sendo obrigatório à parte, porque desde o
+> Flyway 10 o suporte a cada banco vive em seu próprio artefato. As versões vêm do
+> `spring-boot-starter-parent`; não fixe versão à mão.
 
 ### 2. Configuração (`application.yml`)
 
 ```yaml
 spring:
-  jpa:
-    hibernate:
-      ddl-auto: validate   # era: update
   flyway:
     enabled: true
     locations: classpath:db/migration
+    baseline-on-migrate: false
+  jpa:
+    hibernate:
+      ddl-auto: validate   # era: update
 ```
 
 `validate` é a peça central da decisão: na subida, o Hibernate **compara** o mapeamento das entidades com o schema real e falha o startup se divergirem. O erro aparece no boot, não em produção na primeira query.
@@ -85,19 +100,34 @@ Se o seu Postgres local **já tem** a tabela criada pelo `ddl-auto: update`, o F
    ```
 2. **Manter os dados** — marcar o estado atual como baseline: `spring.flyway.baseline-on-migrate=true` e `baseline-version=1`. Nesse caso o Flyway assume que o schema atual já corresponde à `V1` e **não** a executa. Confira se ele bate de fato: o `ddl-auto: update` não cria os `CHECK`, por exemplo.
 
+**O que aconteceu aqui (2026-09-02):** antes desta ADR ser aplicada, o schema local tinha
+sido criado pelo próprio `ddl-auto: update`, e anotar a entidade com `@Table(name = "orders")`
+deixou o banco com **duas** tabelas lado a lado — `order_model` com os dados e `orders` vazia.
+É exatamente o defeito descrito no item 1 do Contexto: o `update` cria o que falta e nunca
+renomeia. Como eram só pedidos de teste, seguimos o caminho 1 (`docker compose down -v`) e
+deixamos o Flyway montar o schema do zero, já com o nome definitivo — por isso a `V1` cria
+`orders` direto e não existe uma `V2` de `RENAME`.
+
 ## O que a `V1` contém
 
-A `V1__create_order_table.sql` cria `order_model` espelhando `OrderModel`, com decisões que valem registrar:
+A `V1__create_order_table.sql` cria `orders` espelhando `OrderModel`, com decisões que valem registrar.
+
+Um cuidado que o `validate` impõe e não é óbvio: o Hibernate 6+ compara **tipo, tamanho,
+precisão e escala**, não só o nome da coluna. Um `VARCHAR(50)` no SQL contra um
+`String` sem `length` na entidade (que o Hibernate espera como `varchar(255)`) derruba
+o startup. Por isso a entidade declara `precision`/`scale` em `amount` e `length` em
+`receiver_account_number` e `status`: a migração e as anotações precisam contar a mesma
+história, coluna por coluna.
 
 | Item | Escolha | Porquê |
 |---|---|---|
-| Nome da tabela | `order_model` | É o que a naming strategy padrão do Spring gera a partir de `@Entity OrderModel` — a classe não declara `@Table`. Batizar de `orders` exigiria anotar a entidade (e uma `V2` com `RENAME`). Nunca use `order`: é palavra reservada em SQL. |
+| Nome da tabela | `orders` | Explicitado nos dois lados: `@Table(name = "orders")` na entidade e `CREATE TABLE orders` na migração — sem depender da naming strategy, que geraria `order_model` a partir do nome da classe. Nunca use `order` no singular: é palavra reservada em SQL. |
 | `order_id` | `UUID` | `@GeneratedValue(strategy = GenerationType.UUID)` — o id é gerado pela aplicação, não pelo banco. Sem sequence. |
-| `amount` | `NUMERIC(19,2)` | Default do Hibernate para `BigDecimal`. **Nunca** `FLOAT`/`DOUBLE` para dinheiro: binário não representa `0,10` exato e o erro acumula. |
+| `amount` | `NUMERIC(19,2)` | Declarado também na entidade (`precision = 19, scale = 2`); sem isso o Hibernate esperaria o default `numeric(38,2)` e o `validate` falharia. **Nunca** `FLOAT`/`DOUBLE` para dinheiro: binário não representa `0,10` exato e o erro acumula. |
 | `status` | `VARCHAR(20)` + `CHECK` | `@Enumerated(EnumType.STRING)` grava o nome. Preferível a `ORDINAL`, que grava o índice e corrompe todo o histórico se alguém reordenar o enum. O `CHECK` impede lixo vindo de fora da aplicação. |
 | `created_at` | `TIMESTAMP NOT NULL` | O campo é inicializado em Java (`= LocalDateTime.now()`), então o `NOT NULL` é seguro. |
 | Destinatários | ambos nullable + `CHECK` | Um pedido precisa de email **ou** conta; o `CHECK` replica no banco a regra de `@ValidRecipient`. Ver [ADR 0002](0002-validacao-customizada-validrecipient.md) — inclusive a divergência entre "pelo menos um" e "exatamente um". |
-| `ix_order_model_status` | índice | O frontend faz polling por status e a leitura de pendentes filtra por essa coluna. |
+| `ix_orders_status` | índice | O frontend faz polling por status e a leitura de pendentes filtra por essa coluna. |
 
 ### Por que duplicar a validação no `CHECK`?
 
