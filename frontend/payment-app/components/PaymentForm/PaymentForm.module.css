@@ -1,0 +1,49 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem; /* entre campos */
+}
+
+.buttons {
+  display: flex;
+  gap: 1rem;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-family: "IBM Plex Sans", sans-serif;
+}
+
+.submit {
+  background: var(--accent);
+  color: var(--surface);
+  border: none;
+  border-radius: 8px;
+  padding: 14px 28px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap; /* em tela estreita, o link desce para a linha de baixo */
+}
+
+.submit:hover {
+  background: var(--accent-hover);
+}
+
+.secondary {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.secondary:hover {
+  color: var(--accent);
+}

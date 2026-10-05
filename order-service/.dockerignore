@@ -1,0 +1,31 @@
+# Arquivos que NÃO devem ir para o contexto de build do Docker.
+# Contexto menor = build mais rápido e sem vazar arquivos locais para a imagem.
+
+# Saída de build local (o jar é gerado dentro do container)
+target/
+
+# Maven wrapper (o build usa o Maven da imagem oficial)
+.mvn/
+mvnw
+mvnw.cmd
+
+# IDE / SO
+.vscode/
+.idea/
+*.iml
+.DS_Store
+
+# Git e CI
+.git/
+.gitattributes
+.gitignore
+.github/
+
+# Documentação
+docs/
+HELP.md
+*.md
+
+# O próprio Dockerfile não precisa estar no contexto
+Dockerfile
+.dockerignore

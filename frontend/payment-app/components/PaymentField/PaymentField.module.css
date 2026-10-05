@@ -1,0 +1,42 @@
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem; /* entre label e input */
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  font-family: "IBM Plex Sans", sans-serif;
+}
+
+.input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 13px 14px;
+  font-size: 14px;
+  color: var(--foreground);
+  font-family: inherit;
+  outline: none;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.money {
+  max-width: 260px;
+  font-variant-numeric: tabular-nums;
+}
+
+.input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.span {
+  font-size: 12px;
+  color: var(--text-subtle);
+  font-family: "IBM Plex Sans", sans-serif;
+}

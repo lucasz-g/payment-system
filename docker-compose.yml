@@ -1,6 +1,36 @@
-version: '3.8'
-
 services:
+
+  frontend:
+    build:
+      context: ./frontend/payment-app
+      dockerfile: Dockerfile
+    container_name: frontend
+    ports: 
+      - "3000:3000"
+    depends_on:
+      order-service:
+        condition: service_healthy
+
+  order-service:
+    build:
+      context: ./order-service
+      dockerfile: Dockerfile
+    container_name: order-service
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres-order:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-order:5432/order_db
+      SPRING_DATASOURCE_USERNAME: order_user
+      SPRING_DATASOURCE_PASSWORD: order_pass
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: admin
+      SPRING_RABBITMQ_PASSWORD: SuperSecurePass123
   postgres-order:
     image: postgres:16
     container_name: postgres-order
@@ -17,6 +47,28 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: rabbitmq
+    restart: always
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=SuperSecurePass123
+    ports:
+      # AMQP protocol port (used by applications to send/receive messages)
+      - "5672:5672"
+      # HTTP API and Management UI port
+      - "15672:15672"
+    volumes:
+      # Persists RabbitMQ data so it survives container restarts
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
 volumes:
   postgres_order_data:
+  rabbitmq_data:

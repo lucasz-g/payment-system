@@ -17,7 +17,7 @@ import jakarta.validation.Payload;
 @Retention(RetentionPolicy.RUNTIME) // Anotação disponível em tempo de execução
 @Constraint(validatedBy = RecipientValidator.class) // Classe que implementa a lógica de validação
 public @interface ValidRecipient {
-    String message() default "Informe exatamente um destinatário: conta OU email";
+    String message() default "Informe ao menos um destinatário";
     Class<?>[] groups() default {};
     Class<? extends Payload>[] payload() default {};
 }
