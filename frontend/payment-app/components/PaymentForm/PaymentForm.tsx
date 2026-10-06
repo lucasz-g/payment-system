@@ -17,7 +17,7 @@ const PaymentForm = () => {
   const [description, setDescription] = useState("");
 
   async function postOrder(order: OrderRequest): Promise<OrderRequest> {
-    const response = await api.post<OrderRequest>("/create/", order); 
+    const response = await api.post<OrderRequest>("/create", order); 
     return response.data; 
   }
   
@@ -52,13 +52,14 @@ const PaymentForm = () => {
     const order: OrderRequest = {
       payerName,
       amount,
+      // Se receiver igual a um e-mail, atribui receiver ao campo receiverEmail
+      // e receiverAccountNumber como null
       receiverEmail: isEmail ? receiver : null,  
       receiverAccountNumber: isEmail ? null : receiver, 
       description 
     }
-
     console.log(order);
-    postOrder(order);     
+    postOrder(order); 
   };
 
   return (

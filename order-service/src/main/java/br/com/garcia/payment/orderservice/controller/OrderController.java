@@ -3,6 +3,7 @@ package br.com.garcia.payment.orderservice.controller;
 import java.util.List;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -36,8 +37,8 @@ public class OrderController {
     public ResponseEntity<List<OrderResponse>> getOrders() {
         return ResponseEntity.ok(orderService.getOrders());
     }
-
-    @PostMapping("/create")
+                            // Implementação temporária do CORS
+    @PostMapping("/create") @CrossOrigin(origins = "*", allowedHeaders = "*")   
     public ResponseEntity<OrderResponse> createOrder(@Valid @RequestBody OrderRequest request) {
         OrderResponse orderResponse = orderService.createOrder(request.toOrderModel());
         return ResponseEntity.ok(orderResponse); 

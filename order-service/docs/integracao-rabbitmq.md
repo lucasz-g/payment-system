@@ -190,39 +190,109 @@ Testar: `POST /orders` e conferir em <http://localhost:15672> → aba **Queues**
 
 ---
 
-## 6. Pendente: converter para JSON com Jackson
+## 6. Serializar em JSON: o `MessageConverter` como bean gerenciado
 
-**Ainda não aplicado no código.** Hoje o service publica `orderResponse.toString()`, o que
-gera algo como `OrderResponse[orderId=..., amount=...]` — legível na UI, mas impossível de
-um consumidor desserializar de volta em objeto.
+**Aplicado em 2026-10-05.** Antes disso o service publicava `orderResponse.toString()`, o
+que gerava algo como `OrderResponse[orderId=..., amount=...]` — legível na UI, mas impossível
+de um consumidor desserializar de volta em objeto.
 
-O caminho é registrar um `MessageConverter` Jackson. O `RabbitTemplate` passa a serializar
-o objeto em JSON automaticamente e a preencher o `content_type` da mensagem:
+### A abordagem: um único bean, e o Spring liga o resto
+
+Em `RabbitConfig` existe apenas isto:
 
 ```java
-@Bean
-MessageConverter jsonMessageConverter() {
+@Bean MessageConverter jsonMessageConverter() {
     return new JacksonJsonMessageConverter();
 }
 ```
 
-> **Atenção à versão.** O Spring Boot 4 usa **Jackson 3** (`tools.jackson`), e o Spring AMQP 4
-> acompanhou: a classe passou a ser `JacksonJsonMessageConverter`. O
-> `Jackson2JsonMessageConverter` de todo tutorial escrito para o Boot 3 ainda existe no jar,
-> mas está depreciado e amarrado ao Jackson 2. Neste projeto use a versão sem o `2`.
+Nada além disso. Em nenhum lugar do projeto esse converter é passado para o
+`RabbitTemplate` na mão — e é exatamente esse o ponto que costuma confundir.
 
-Com o bean no contexto, o envio passa a receber o objeto direto:
+**O mecanismo.** O `RabbitTemplate` não é criado por nós: quem o cria é a autoconfiguração
+do `spring-boot-starter-amqp`, através de um `RabbitTemplateConfigurer`. E esse configurer
+declara uma dependência opcional por `ObjectProvider<MessageConverter>` — ou seja, ele
+*procura no contexto* se existe algum bean do tipo `MessageConverter`. Se existir exatamente
+um, ele o aplica no template; se não existir nenhum, o template fica com o
+`SimpleMessageConverter` padrão (que serializa String/byte[] e cai em serialização Java
+binária para qualquer outro objeto).
 
-```java
-rabbitTemplate.convertAndSend(RabbitMQConfig.QUEUE_NAME, orderResponse);
+```text
+@Bean MessageConverter  ──(está no contexto)──>  RabbitTemplateConfigurer
+                                                        │
+                                                        └──> RabbitTemplate já configurado
+                                                             e injetado onde você pedir
 ```
 
-E o consumidor recebe o tipo já pronto:
+É o padrão de extensão que o Spring Boot usa em quase toda autoconfiguração: **você não
+configura o componente, você publica um bean e a autoconfiguração o encontra.** Declarar o
+bean é a configuração.
+
+Duas consequências práticas disso:
+
+- **Vale para todos os `RabbitTemplate` do contexto**, não só para um ponto de envio. Não
+  existe risco de um publisher serializar em JSON e outro esquecer.
+- **Se houver mais de um `MessageConverter` no contexto**, o `getIfUnique()` do
+  `ObjectProvider` devolve `null` e **nenhum** é aplicado — silenciosamente, de volta ao
+  comportamento padrão. Dois converters é pior que zero. Se um dia precisar de mais de um,
+  marque um deles com `@Primary`.
+
+### O que o converter faz na prática
+
+Com ele no contexto, o `convertAndSend` passa a receber o **objeto de domínio direto** —
+a serialização deixa de ser responsabilidade do código de aplicação:
 
 ```java
-@RabbitListener(queues = RabbitMQConfig.QUEUE_NAME)
-public void onOrder(OrderResponse order) { ... }
+rabbitTemplate.convertAndSend(
+        RabbitConfig.EXCHANGE,
+        RabbitConfig.ORDER_CREATED_KEY,
+        orderCreated);          // o objeto, não uma String
 ```
+
+Além do corpo em JSON, o converter preenche os headers da mensagem: `content_type:
+application/json` e o `__TypeId__` com o nome da classe de origem — é esse header que
+permite ao consumidor desserializar no tipo certo sem configuração extra:
+
+```java
+@RabbitListener(queues = RabbitConfig.ORDER_CREATED_QUEUE)
+public void onOrderCreated(OrderCreated event) { ... }
+```
+
+> **Atenção à versão — custou uma sessão de debug.** O Spring Boot 4 migrou para
+> **Jackson 3** (pacote `tools.jackson`), e o Spring AMQP 4 acompanhou: a classe passou a
+> ser `JacksonJsonMessageConverter`, **sem o `2`**. O `Jackson2JsonMessageConverter` de todo
+> tutorial escrito para o Boot 3 ainda existe no `spring-amqp-4.1.1.jar`, mas é a versão
+> legada, amarrada ao Jackson 2 (`com.fasterxml.jackson`) — que o Boot 4 não traz mais no
+> classpath. Usá-lo compila normalmente e **quebra só na subida**, com um
+> `NoClassDefFoundError: com/fasterxml/jackson/databind/json/JsonMapper` enterrado sob umas
+> cinco camadas de `BeanCreationException`. O sintoma não aponta para a causa.
+
+### Não serialize na mão antes de enviar
+
+O erro natural de quem vem do `toString()` é continuar convertendo o objeto antes do envio:
+
+```java
+// ERRADO, com um MessageConverter JSON registrado
+String json = new ObjectMapper().writeValueAsString(orderCreated);
+rabbitTemplate.convertAndSend(RabbitConfig.ORDER_CREATED_QUEUE, json);
+```
+
+O converter recebe uma `String` e faz o trabalho dele: serializa **essa String** como JSON.
+O resultado é um JSON escapado dentro de outro JSON, que o consumidor precisa desserializar
+duas vezes — e o `__TypeId__` aponta para `java.lang.String`:
+
+```text
+objeto ──(mapper manual)──> "{\"orderId\":\"abc\"}"  ──(converter)──> "\"{\\\"orderId\\\":...\""
+```
+
+Com o bean registrado, `ObjectMapper` manual não tem lugar no publisher. (E, de forma geral,
+nunca `new ObjectMapper()` a cada chamada: é caro de construir e thread-safe por design —
+se precisar de um, injete o bean que o Boot já configura.)
+
+> **Pendência conhecida (2026-10-05):** o `OrderEventPublisher` ainda faz exatamente o que
+> está descrito acima como errado — serializa com um `ObjectMapper` próprio e publica a
+> String resultante, além de enviar pela exchange padrão em vez da `payments.exchange`
+> declarada no `RabbitConfig`. Corrigir quando o consumidor for implementado.
 
 ---
 

@@ -14,9 +14,11 @@
 
 CREATE TABLE orders (
     order_id                UUID           NOT NULL,
+    payer_name              VARCHAR(100)   NOT NULL,
     amount                  NUMERIC(19, 2) NOT NULL,
     receiver_email          VARCHAR(255),
     receiver_account_number VARCHAR(50),
+    description             VARCHAR(100),
     status                  VARCHAR(20)    NOT NULL,
     created_at              TIMESTAMP      NOT NULL,
 

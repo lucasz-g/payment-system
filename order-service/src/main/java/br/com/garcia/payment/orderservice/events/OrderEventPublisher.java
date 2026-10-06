@@ -1,10 +1,11 @@
 package br.com.garcia.payment.orderservice.events;
 
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.stereotype.Component;
 
 import br.com.garcia.payment.orderservice.config.RabbitConfig;
-import tools.jackson.databind.ObjectMapper;
 
+@Component
 public class OrderEventPublisher {
     // publica OrderCreated logo após salvar o pedido como PENDING
 
@@ -15,15 +16,8 @@ public class OrderEventPublisher {
     }
 
     public void sendMessageToQueue(OrderCreated orderCreated) {
-        String message = stringToJson(orderCreated);
         // Envia orderCreated em formato JSON para a fila order.queue
-        rabbitTemplate.convertAndSend(RabbitConfig.ORDER_CREATED_QUEUE, message);
+        rabbitTemplate.convertAndSend(RabbitConfig.ORDER_CREATED_QUEUE, orderCreated);
     } 
-
-    public String stringToJson(OrderCreated orderCreated) {
-        // Mapper jackson para converter o objeto OrderCreated em JSON
-        ObjectMapper mapper = new ObjectMapper();
-        return mapper.writeValueAsString(orderCreated);
-    }
 
 }
